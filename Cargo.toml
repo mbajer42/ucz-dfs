@@ -1,0 +1,31 @@
+[package]
+name = "udfs"
+version = "0.0.1"
+authors = ["radogost"]
+edition = "2018"
+
+[[bin]]
+name = "datanode"
+path = "src/bin/datanode.rs"
+
+[[bin]]
+name = "namenode"
+path = "src/bin/namenode.rs"
+
+[dependencies]
+bytes = "0.5"
+clap = "2.33"
+prost = "0.6"
+rand = "0.7"
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "0.2", features = ["full"] }
+toml = "0.5"
+tonic = "0.3"
+tracing = "0.1"
+tracing-subscriber = "0.2"
+
+[dev-dependencies]
+tempdir = "0.3"
+
+[build-dependencies]
+tonic-build = "0.3"

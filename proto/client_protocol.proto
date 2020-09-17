@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+import "common.proto";
+
+package udfs.proto;
+
+service ClientProtocol {
+    rpc nodes_report(EmptyMessage) returns (DataNodeInfoResponse);
+    rpc mkdir(MkdirRequest) returns (EmptyMessage);
+    rpc ls(LsRequest) returns (LsResponse);
+    rpc open_file(OpenFileRequest) returns (OpenFileResponse);
+    rpc start_file_create(CreateFileRequest) returns (BlockWithTargets);
+    rpc finish_file_create(CreateFileRequest) returns (EmptyMessage);
+    rpc abort_file_create(CreateFileRequest) returns (EmptyMessage);
+    rpc add_block(AddBlockRequest) returns (BlockWithTargets);
+    rpc finish_block_write(FinishBlockWriteRequest) returns (EmptyMessage);
+    rpc abort_block_write(AbortBlockWriteRequest) returns (EmptyMessage);
+}
+
+message DataNodeInfoResponse {
+    repeated DataNodeInfo datanodes = 1;
+}
+
+message OpenFileRequest {
+    string path = 1;
+}
+
+message OpenFileResponse {
+    repeated BlockWithLocations blocks = 1;
+}
+
+message BlockWithLocations {
+    Block block = 1;
+    repeated string locations = 2;
+}
+
+message MkdirRequest {
+    string path = 1;
+}
+
+message LsRequest {
+    string path = 1;
+}
+
+message LsResponse {
+    repeated string files = 1;
+}
+
+message CreateFileRequest {
+    string path = 1;
+}
+
+message BlockWithTargets {
+    Block block = 1;
+    repeated DataNodeInfo targets = 2;
+}
+
+message AddBlockRequest {
+    string path = 1;
+}
+
+message FinishBlockWriteRequest {
+    Block block = 1;
+    repeated string locations = 2;
+    string path = 3;
+}
+
+message AbortBlockWriteRequest {
+    Block block = 1;
+    string path = 2;
+}
+

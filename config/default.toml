@@ -1,0 +1,18 @@
+[namenode]
+rpc_bind_host = "0.0.0.0"
+rpc_port = 42000
+
+[datanode]
+namenode_rpc_address = "http://localhost:42000"
+rpc_port = 42001
+data_dir = "/tmp"
+disk_statistics_interval = 3000
+
+[filesystem]
+type = "udfs"
+namenode_rpc_address = "http://localhost:42000"
+
+[dfs]
+replication = 3
+block_size = 67108864
+packet_size = 65536

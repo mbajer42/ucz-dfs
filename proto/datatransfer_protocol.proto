@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+import "common.proto";
+
+package udfs.proto;
+
+message Operation {
+    enum OpCode {
+        WRITE_BLOCK = 0;
+        READ_BLOCK = 1;
+    }
+
+    OpCode op = 1;
+}
+
+message ReadBlockOperation {
+    Block block = 1;
+}
+
+message WriteBlockOperation {
+    Block block = 1;
+    repeated string targets = 2;
+}
+
+message WriteBlockResponse {
+    bool success = 1;
+    Block block = 2;
+    repeated string locations = 3;
+}
+
+message Packet {
+    uint64 size = 1;
+    bool last = 2;
+}

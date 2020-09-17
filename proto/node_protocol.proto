@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+import "common.proto";
+
+package udfs.proto;
+
+service NodeProtocol {
+    rpc heartbeat(HeartbeatMessage) returns (EmptyMessage);
+}
+
+
+message HeartbeatMessage {
+    string address = 1;
+    uint64 available = 2;
+    uint64 used = 3;
+}
