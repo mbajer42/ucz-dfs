@@ -39,7 +39,8 @@ async fn main() -> Result<()> {
             let datanodes = dfs.nodes_report().await?;
             println!("Datanodes:");
             for datanode in datanodes {
-                let used_percentage = 100.0 * (datanode.used as f64) / (datanode.available as f64);
+                let used_percentage = 100.0 * (datanode.used as f64)
+                    / (datanode.available as f64 + datanode.used as f64);
                 println!("\tAddress: {}", datanode.address);
                 println!("\tAvailable storage (kB): {}", datanode.available);
                 println!(
