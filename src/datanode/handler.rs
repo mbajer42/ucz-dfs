@@ -19,7 +19,7 @@ use tokio::net::TcpStream;
 use tracing::debug;
 
 pub(crate) struct DataTransferHandler {
-    addr: &'static str,
+    addr: String,
     socket: BufStream<TcpStream>,
     storage: Arc<DataNodeStorage>,
     packet_size: u64,
@@ -27,7 +27,7 @@ pub(crate) struct DataTransferHandler {
 
 impl DataTransferHandler {
     pub(crate) fn new(
-        addr: &'static str,
+        addr: String,
         socket: TcpStream,
         storage: Arc<DataNodeStorage>,
         packet_size: u64,

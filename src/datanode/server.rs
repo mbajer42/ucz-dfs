@@ -1,39 +1,32 @@
-
 use crate::config::Config;
 use crate::datanode::datanode_storage::DataNodeStorage;
 use crate::error::{Result, UdfsError};
 
 use crate::proto::node_protocol_client::NodeProtocolClient;
 
-use crate::proto::{
-    HeartbeatMessage,
-};
 use crate::datanode::handler::DataTransferHandler;
+use crate::proto::HeartbeatMessage;
 
 use std::future::Future;
 use std::iter::Iterator;
 use std::sync::Arc;
 use std::time::Duration;
 
-
-
-
-
-use tokio::net::{TcpListener};
+use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tokio::time;
 
 use tracing::{error, info};
 
 pub struct DataNode<'a> {
-    addr: &'static str,
+    addr: &'a str,
     namenode_rpc_address: &'a str,
     packet_size: u64,
     storage: Arc<DataNodeStorage>,
 }
 
 impl<'a> DataNode<'a> {
-    pub fn new(addr: &'static str, config: &'a Config) -> Result<Self> {
+    pub fn new(addr: &'a str, config: &'a Config) -> Result<Self> {
         let storage = Arc::new(DataNodeStorage::new(&config)?);
         Ok(Self {
             addr,
@@ -79,7 +72,7 @@ impl<'a> DataNode<'a> {
         while shutdown_signal.try_recv().is_err() {
             let (socket, _) = listener.accept().await?;
             let storage = Arc::clone(&self.storage);
-            let addr: &'static str = &self.addr;
+            let addr = self.addr.to_owned();
             let packet_size = self.packet_size;
 
             tokio::spawn(async move {
@@ -146,4 +139,3 @@ impl<'a> DataNode<'a> {
         Ok(())
     }
 }
-
