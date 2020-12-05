@@ -14,5 +14,5 @@ namenode_rpc_address = "http://namenode:42000"
 
 [dfs]
 replication = 2
-block_size = 67108864
+block_size = 1048576
 packet_size = 65536

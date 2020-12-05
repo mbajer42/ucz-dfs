@@ -1,17 +1,24 @@
+use crate::config::Config;
 use crate::error::{Result, UdfsError};
+use crate::io::{DfsReader, DfsWriter};
 use crate::proto;
 use crate::proto::client_protocol_client::ClientProtocolClient;
+
+use tokio::fs::File;
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 
 use tonic::transport::Channel;
 
 pub struct DfsClient<'a> {
     namenode_rpc_address: &'a str,
+    config: &'a Config,
 }
 
 impl<'a> DfsClient<'a> {
-    pub fn new(namenode_rpc_address: &'a str) -> Self {
+    pub fn new(namenode_rpc_address: &'a str, config: &'a Config) -> Self {
         Self {
             namenode_rpc_address,
+            config,
         }
     }
 
@@ -47,5 +54,41 @@ impl<'a> DfsClient<'a> {
         let response = client.ls(proto::LsRequest { path: path.into() }).await?;
         let proto::LsResponse { files } = response.into_inner();
         Ok(files)
+    }
+
+    pub async fn put(&self, src: &str, dst: impl Into<String>) -> Result<()> {
+        let mut reader = BufReader::new(File::open(src).await?);
+        let mut writer = DfsWriter::create(dst, self.namenode_rpc_address, self.config).await?;
+
+        let mut buf = vec![0; 128];
+        loop {
+            let read = reader.read(&mut buf).await?;
+            if read == 0 {
+                break;
+            }
+            writer.write(&buf[..read]).await?;
+        }
+        writer.flush().await?;
+        writer.shutdown().await?;
+
+        Ok(())
+    }
+
+    pub async fn get(&self, src: &str, dst: &str) -> Result<()> {
+        let mut reader = DfsReader::open(self.namenode_rpc_address, src).await?;
+        let mut writer = BufWriter::new(File::create(dst).await?);
+
+        let mut buf = vec![0; 128];
+        loop {
+            let read = reader.read(&mut buf).await?;
+            if read == 0 {
+                break;
+            }
+            writer.write_all(&buf[..read]).await?;
+        }
+        writer.flush().await?;
+        writer.shutdown().await?;
+
+        Ok(())
     }
 }

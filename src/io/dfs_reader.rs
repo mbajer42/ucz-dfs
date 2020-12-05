@@ -1,8 +1,8 @@
 use crate::block::Block;
 use crate::error::{Result, UdfsError};
-use crate::utils::proto_utils;
 use crate::proto;
 use crate::proto::client_protocol_client::ClientProtocolClient;
+use crate::utils::proto_utils;
 
 use std::io::Read;
 
