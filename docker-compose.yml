@@ -1,0 +1,38 @@
+version: "3.8"
+
+services:
+  namenode:
+    build: ./
+    hostname: namenode
+    entrypoint: ./docker/start-namenode.sh
+    environment:
+      UDFS_CONFIG_FILE: ./docker/udfs-config.toml
+      RUST_LOG: udfs=debug
+
+  datanode1:
+    build: ./
+    entrypoint: ./docker/start-datanode.sh
+    depends_on:
+      - namenode
+    environment:
+      UDFS_CONFIG_FILE: ./docker/udfs-config.toml
+      RUST_LOG: udfs=debug
+
+
+  datanode2:
+    build: ./
+    entrypoint: ./docker/start-datanode.sh
+    depends_on:
+      - namenode
+    environment:
+      UDFS_CONFIG_FILE: ./docker/udfs-config.toml
+      RUST_LOG: udfs=debug
+
+  datanode3:
+    build: ./
+    entrypoint: ./docker/start-datanode.sh
+    depends_on:
+      - namenode
+    environment:
+      UDFS_CONFIG_FILE: ./docker/udfs-config.toml
+      RUST_LOG: udfs=debug
