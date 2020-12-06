@@ -4,6 +4,8 @@ udfs (ucz distributed file system)
 A distributed file system, based on hdfs/gfs. 
 Just for fun and learning.
 
+![CI](https://github.com/radogost/udfs/workflows/CI/badge.svg?branch=master)
+
 Work is still in progress, a lot of things are missing.
 
 If you want to try it out, the easiest way it to spin up docker containers (`docker-compose up`), and bash into a running container (`docker exec -it <id> bash`).
