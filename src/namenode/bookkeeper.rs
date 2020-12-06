@@ -155,7 +155,7 @@ impl BookKeeper {
             if node_info.available() > self.block_size {
                 target_nodes.insert(node_info);
             }
-            if target_nodes.len() as u64 > self.block_replication {
+            if target_nodes.len() as u64 >= self.block_replication {
                 let block_id = self.next_block_id();
                 let block = Block::new(block_id, 0);
                 let mut blocks = HashSet::new();
@@ -242,7 +242,7 @@ impl BookKeeper {
             if node_info.available() > self.block_size {
                 target_nodes.insert(node_info);
             }
-            if target_nodes.len() as u64 > self.block_replication {
+            if target_nodes.len() as u64 >= self.block_replication {
                 let block_id = self.next_block_id();
                 let block = Block::new(block_id, 0);
                 blocks.insert(block);
@@ -342,5 +342,49 @@ impl<'a> HeartbeatMonitor<'a> {
             heartbeat_check_interval.tick().await;
             self.bookkeeper.check_heartbeat();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const BLOCK_SIZE: u64 = 10;
+    const DFS_REPLICATION: u64 = 2;
+
+    #[test]
+    fn test_start_file_create() {
+        let conf = config();
+        let mut alive_datanodes = HashMap::new();
+        alive_datanodes.insert(
+            "foo:42".to_owned(),
+            DataNodeInfo::new("foo:42", BLOCK_SIZE * 10, 0),
+        );
+        alive_datanodes.insert(
+            "bar:42".to_owned(),
+            DataNodeInfo::new("bar:42", BLOCK_SIZE * 10, 0),
+        );
+        alive_datanodes.insert(
+            "baz:42".to_owned(),
+            DataNodeInfo::new("baz:42", BLOCK_SIZE * 10, 0),
+        );
+
+        let mut bookkeeper = BookKeeper::new(&conf);
+        bookkeeper.alive_datanodes = Mutex::new(alive_datanodes);
+
+        let block_with_targets = bookkeeper
+            .start_file_create("/foo.txt")
+            .expect("File creation should start without any problems");
+        let (_, targets) =
+            block_with_targets.expect("There are enough alive datanodes with free space");
+
+        assert_eq!(targets.len() as u64, DFS_REPLICATION);
+    }
+
+    fn config() -> Config {
+        let mut config = Config::default();
+        config.dfs.replication = DFS_REPLICATION;
+        config.dfs.block_size = BLOCK_SIZE;
+        config
     }
 }
