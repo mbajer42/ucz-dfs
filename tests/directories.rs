@@ -1,7 +1,7 @@
 use udfs::config;
 use udfs::config::Config;
-use udfs::fs::DistributedFileSystem;
 use udfs::error::Result;
+use udfs::fs::DistributedFileSystem;
 use udfs::namenode::NameNode;
 
 use tokio::sync::oneshot;
@@ -11,7 +11,8 @@ static HEARTBEAT_TIMEOUT: u64 = 2000;
 
 #[tokio::test]
 async fn namenode_keeps_track_of_datanodes() -> Result<()> {
-    let dfs = DistributedFileSystem::new("http://localhost:42000");
+    let config = namenode_config();
+    let dfs = DistributedFileSystem::new("http://localhost:42000", &config);
 
     let (namenode_shutdown_tx, namenode_shutdown_rx) = oneshot::channel::<()>();
     tokio::spawn(async move {

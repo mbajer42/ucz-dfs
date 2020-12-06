@@ -15,7 +15,8 @@ static HEARTBEAT_TIMEOUT: u64 = 2000;
 
 #[tokio::test]
 async fn namenode_keeps_track_of_datanodes() {
-    let dfs = DistributedFileSystem::new("http://localhost:42000");
+    let dfs_config = namenode_config();
+    let dfs = DistributedFileSystem::new("http://localhost:42000", &dfs_config);
 
     let (namenode_shutdown_tx, namenode_shutdown_rx) = oneshot::channel::<()>();
     tokio::spawn(async move {
@@ -69,13 +70,14 @@ async fn namenode_keeps_track_of_datanodes() {
 fn assert_alive_datanodes(nodes_report: Vec<udfs::proto::DataNodeInfo>, expected: Vec<&str>) {
     assert_eq!(nodes_report.len(), expected.len());
 
-    let addresses = nodes_report
-        .iter()
-        .map(|node_info| &*node_info.address)
-        .collect::<Vec<&str>>();
-
     for addr in &expected {
-        assert_eq!(addresses.contains(&addr), true);
+        assert_eq!(
+            nodes_report
+                .iter()
+                .map(|node_info| node_info.address.as_str())
+                .any(|x| &x == addr),
+            true
+        );
     }
 }
 
