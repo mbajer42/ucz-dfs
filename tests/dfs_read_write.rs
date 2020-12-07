@@ -1,10 +1,12 @@
 use udfs::config;
 use udfs::config::Config;
 use udfs::datanode::DataNode;
+use udfs::error::Result;
 use udfs::io::DfsReader;
 use udfs::io::DfsWriter;
-use udfs::error::Result;
 use udfs::namenode::NameNode;
+
+use std::path::PathBuf;
 
 use tempdir::TempDir;
 
@@ -24,8 +26,9 @@ static PAYLOAD_TO_SAFE: &str = "To every differentiable symmetry generated \
 async fn test_read_write() -> Result<()> {
     let (namenode_shutdown_tx, namenode_shutdown_rx) = oneshot::channel::<()>();
     tokio::spawn(async move {
-        let config = namenode_config();
-        let namenode = NameNode::new(&config);
+        let namenode_log_dir = TempDir::new("test").unwrap();
+        let config = namenode_config(namenode_log_dir.path());
+        let namenode = NameNode::new(&config).unwrap();
         namenode.run(namenode_shutdown_rx).await.unwrap();
     });
 
@@ -48,7 +51,7 @@ async fn test_read_write() -> Result<()> {
     // allow datanodes to spawn
     delay_for(Duration::from_millis(100)).await;
 
-    let config = namenode_config();
+    let config = namenode_config("/tmp");
     let mut writer = DfsWriter::create("/noether.txt", "http://127.0.0.1:42000", &config).await?;
     for chunk in PAYLOAD_TO_SAFE.as_bytes().chunks(4) {
         writer.write(chunk).await?;
@@ -100,13 +103,14 @@ fn datanode_config(port: u16) -> (TempDir, Config) {
     (datadir, config)
 }
 
-fn namenode_config() -> Config {
+fn namenode_config(log_dir: impl Into<PathBuf>) -> Config {
     Config {
         namenode: config::NameNode {
             rpc_bind_host: String::from("0.0.0.0"),
             rpc_port: 42000,
             heartbeat_check: HEARTBEAT_CHECK_INTERVAL,
             heartbeat_decomission: HEARTBEAT_TIMEOUT,
+            name_dir: log_dir.into(),
         },
         datanode: config::DataNode::default(),
         filesystem: config::FileSystem::default(),

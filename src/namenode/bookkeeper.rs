@@ -3,6 +3,7 @@ use crate::config::Config;
 use crate::error::{Result, UdfsError};
 use crate::namenode::datanode_info::DataNodeInfo;
 use crate::namenode::dfs_state::DfsState;
+use crate::namenode::editlog::{EditLog, EditOperation};
 
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::sync::{atomic, Mutex, RwLock};
@@ -16,6 +17,8 @@ use tokio::time;
 use tracing::info;
 
 pub(crate) struct BookKeeper {
+    // logs all changes, so that state can be recovered after a restart
+    edit_logger: tokio::sync::Mutex<EditLog>,
     // keeps track of the latest heartbeats
     heartbeats: Mutex<HashMap<String, Instant>>,
     // set of alive datanode addresses
@@ -40,7 +43,8 @@ pub(crate) struct BookKeeper {
 }
 
 impl BookKeeper {
-    pub(crate) fn new(config: &Config) -> Self {
+    pub(crate) fn new(config: &Config) -> Result<Self> {
+        let edit_logger = tokio::sync::Mutex::new(EditLog::open(&config)?);
         let heartbeats = Mutex::new(HashMap::new());
         let alive_datanodes = Mutex::new(HashMap::new());
         let dfs_state = RwLock::new(DfsState::new());
@@ -50,7 +54,8 @@ impl BookKeeper {
         let datanode_to_blocks = Mutex::new(HashMap::new());
         let block_to_datanodes = Mutex::new(HashMap::new());
 
-        Self {
+        Ok(Self {
+            edit_logger,
             heartbeats,
             alive_datanodes,
             dfs_state,
@@ -62,7 +67,18 @@ impl BookKeeper {
             datanode_to_blocks,
             block_to_datanodes,
             block_id_generator: atomic::AtomicU64::new(1),
+        })
+    }
+
+    pub(crate) async fn restore(&self) -> Result<()> {
+        let mut edit_logger = self.edit_logger.lock().await;
+        let ops = edit_logger.restore().await?;
+        for op in ops {
+            match op {
+                EditOperation::Mkdir(path) => self.non_logging_mkdir(&path)?,
+            };
         }
+        Ok(())
     }
 
     pub(crate) async fn run(&self) {
@@ -102,7 +118,14 @@ impl BookKeeper {
             .collect())
     }
 
-    pub(crate) fn mkdir(&self, path: &str) -> Result<()> {
+    pub(crate) async fn mkdir(&self, path: &str) -> Result<()> {
+        self.non_logging_mkdir(path)?;
+        self.log_operation(EditOperation::Mkdir(path.to_owned()))
+            .await;
+        Ok(())
+    }
+
+    fn non_logging_mkdir(&self, path: &str) -> Result<()> {
         let mut dfs_state = self.dfs_state.write().unwrap();
         dfs_state.mkdir(path)
     }
@@ -308,6 +331,11 @@ impl BookKeeper {
         }
     }
 
+    async fn log_operation(&self, op: EditOperation) {
+        let mut edit_logger = self.edit_logger.lock().await;
+        edit_logger.log_operation(&op).await;
+    }
+
     fn check_heartbeat(&self) {
         let mut heartbeats = self.heartbeats.lock().unwrap();
         let mut alive_datanodes = self.alive_datanodes.lock().unwrap();
@@ -349,12 +377,17 @@ impl<'a> HeartbeatMonitor<'a> {
 mod tests {
     use super::*;
 
+    use std::path::PathBuf;
+
+    use tempdir::TempDir;
+
     const BLOCK_SIZE: u64 = 10;
     const DFS_REPLICATION: u64 = 2;
 
     #[test]
     fn test_start_file_create() {
-        let conf = config();
+        let tempdir = TempDir::new("bookkeeper-test").unwrap();
+        let conf = get_config(tempdir.path());
         let mut alive_datanodes = HashMap::new();
         alive_datanodes.insert(
             "foo:42".to_owned(),
@@ -369,7 +402,7 @@ mod tests {
             DataNodeInfo::new("baz:42", BLOCK_SIZE * 10, 0),
         );
 
-        let mut bookkeeper = BookKeeper::new(&conf);
+        let mut bookkeeper = BookKeeper::new(&conf).unwrap();
         bookkeeper.alive_datanodes = Mutex::new(alive_datanodes);
 
         let block_with_targets = bookkeeper
@@ -381,10 +414,11 @@ mod tests {
         assert_eq!(targets.len() as u64, DFS_REPLICATION);
     }
 
-    fn config() -> Config {
+    fn get_config(logdir: impl Into<PathBuf>) -> Config {
         let mut config = Config::default();
         config.dfs.replication = DFS_REPLICATION;
         config.dfs.block_size = BLOCK_SIZE;
+        config.namenode.name_dir = logdir.into();
         config
     }
 }

@@ -21,6 +21,7 @@ pub struct NameNode {
     pub rpc_port: u16,
     pub heartbeat_check: u64,
     pub heartbeat_decomission: u64,
+    pub name_dir: PathBuf,
 }
 
 #[derive(Debug, Deserialize)]
@@ -93,11 +94,16 @@ impl std::default::Default for Config {
 
 impl std::default::Default for NameNode {
     fn default() -> Self {
+        let mut namedir = std::env::temp_dir();
+        namedir.push("ucz-dfs");
+        namedir.push("namenode");
+
         Self {
             rpc_bind_host: String::from("0.0.0.0"),
             rpc_port: 42000,
             heartbeat_check: 1000,
             heartbeat_decomission: 30_000,
+            name_dir: namedir,
         }
     }
 }
@@ -109,7 +115,7 @@ impl std::default::Default for DataNode {
             rpc_port: 42001,
             heartbeat_interval: 3000,
             disk_statistics_interval: 3000,
-            data_dir: PathBuf::from("/tmp/udfs/data"),
+            data_dir: PathBuf::from("/tmp/ucz-dfs/datanode"),
         }
     }
 }

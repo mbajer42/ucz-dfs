@@ -15,13 +15,13 @@ static HEARTBEAT_TIMEOUT: u64 = 2000;
 
 #[tokio::test]
 async fn namenode_keeps_track_of_datanodes() {
-    let dfs_config = namenode_config();
+    let dfs_config = namenode_config("/tmp");
     let dfs = DistributedFileSystem::new("http://localhost:42000", &dfs_config);
 
     let (namenode_shutdown_tx, namenode_shutdown_rx) = oneshot::channel::<()>();
     tokio::spawn(async move {
-        let namenode_conf = namenode_config();
-        let namenode = NameNode::new(&namenode_conf);
+        let namenode_conf = namenode_config("/tmp");
+        let namenode = NameNode::new(&namenode_conf).unwrap();
         namenode.run(namenode_shutdown_rx).await.unwrap();
     });
 
@@ -104,13 +104,14 @@ fn datanode_config(port: u16) -> Config {
     }
 }
 
-fn namenode_config() -> Config {
+fn namenode_config(name_dir: impl Into<PathBuf>) -> Config {
     Config {
         namenode: config::NameNode {
             rpc_bind_host: String::from("0.0.0.0"),
             rpc_port: 42000,
             heartbeat_check: HEARTBEAT_CHECK_INTERVAL,
             heartbeat_decomission: HEARTBEAT_TIMEOUT,
+            name_dir: name_dir.into(),
         },
         datanode: config::DataNode::default(),
         filesystem: config::FileSystem::default(),
