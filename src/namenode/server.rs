@@ -1,6 +1,6 @@
-use crate::namenode::bookkeeper::BookKeeper;
 use crate::config::Config;
 use crate::error::{Result, UdfsError};
+use crate::namenode::bookkeeper::BookKeeper;
 use crate::proto;
 use crate::proto::client_protocol_server::{ClientProtocol, ClientProtocolServer};
 use crate::proto::node_protocol_server::{NodeProtocol, NodeProtocolServer};
@@ -19,11 +19,17 @@ pub struct NameNode<'a> {
 }
 
 impl<'a> NameNode<'a> {
-    pub fn new(config: &'a Config) -> Self {
-        Self {
+    pub fn new(config: &'a Config) -> Result<Self> {
+        let bookkeeper = BookKeeper::new(config)?;
+        Ok(Self {
             config,
-            bookkeeper: Arc::new(BookKeeper::new(config)),
-        }
+            bookkeeper: Arc::new(bookkeeper),
+        })
+    }
+
+    /// Restores a previous state of a namenode, if there is any
+    pub async fn restore(&self) -> Result<()> {
+        self.bookkeeper.restore().await
     }
 
     pub async fn run(&self, shutdown_signal: impl Future) -> Result<()> {
@@ -121,7 +127,7 @@ impl ClientProtocol for ClientProtocolService {
     ) -> std::result::Result<Response<proto::EmptyMessage>, Status> {
         let proto::MkdirRequest { path } = request.into_inner();
 
-        match self.bookkeeper.mkdir(&path) {
+        match self.bookkeeper.mkdir(&path).await {
             Ok(()) => Ok(Response::new(proto::EmptyMessage {})),
             Err(err) => Err(Status::invalid_argument(err.to_string())),
         }

@@ -1,11 +1,12 @@
 [namenode]
 rpc_bind_host = "0.0.0.0"
 rpc_port = 42000
+name_dir = "/tmp/ucz-dfs/namenode"
 
 [datanode]
 namenode_rpc_address = "http://localhost:42000"
 rpc_port = 42001
-data_dir = "/tmp"
+data_dir = "/tmp/ucz-dfs/datanode"
 disk_statistics_interval = 3000
 
 [filesystem]

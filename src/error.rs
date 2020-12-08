@@ -38,6 +38,12 @@ impl From<std::net::AddrParseError> for UdfsError {
     }
 }
 
+impl From<serde_json::Error> for UdfsError {
+    fn from(error: serde_json::Error) -> Self {
+        UdfsError::ConfigError(error.to_string())
+    }
+}
+
 impl From<toml::de::Error> for UdfsError {
     fn from(error: toml::de::Error) -> Self {
         UdfsError::ConfigError(error.to_string())

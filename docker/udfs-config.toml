@@ -1,6 +1,7 @@
 [namenode]
 rpc_bind_host = "0.0.0.0"
 rpc_port = 42000
+name_dir = "/usr/src/ucz-dfs/namenode"
 
 [datanode]
 namenode_rpc_address = "http://namenode:42000"

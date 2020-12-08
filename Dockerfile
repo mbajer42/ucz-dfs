@@ -1,6 +1,6 @@
 FROM rust:1.48
 
-WORKDIR /usr/src/udfs
+WORKDIR /usr/src/ucz-dfs
 COPY build.rs .
 COPY Cargo.toml .
 COPY docker/ ./docker/
