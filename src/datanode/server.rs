@@ -68,25 +68,30 @@ impl<'a> DataNode<'a> {
     async fn run_data_server(&self, mut shutdown_signal: broadcast::Receiver<()>) -> Result<()> {
         let mut listener = TcpListener::bind(self.addr).await?;
 
-        // TODO: This should be a loop { tokio::select! { ... } }
-        while shutdown_signal.try_recv().is_err() {
-            let (socket, _) = listener.accept().await?;
-            let storage = Arc::clone(&self.storage);
-            let addr = self.addr.to_owned();
-            let packet_size = self.packet_size;
+        loop {
+            tokio::select! {
+                _ = shutdown_signal.recv() => {
+                    return Ok(())
+                },
+                incoming = listener.accept() => {
+                    let (socket, _) = incoming?;
+                    let storage = Arc::clone(&self.storage);
+                    let addr = self.addr.to_owned();
+                    let packet_size = self.packet_size;
 
-            tokio::spawn(async move {
-                let mut handler = DataTransferHandler::new(addr, socket, storage, packet_size);
-                match handler.handle().await {
-                    Ok(()) => (),
-                    Err(e) => error!(
-                        "An error occured while handling data server request: {:?}",
-                        e
-                    ),
+                    tokio::spawn(async move {
+                        let mut handler = DataTransferHandler::new(addr, socket, storage, packet_size);
+                        match handler.handle().await {
+                            Ok(()) => (),
+                            Err(e) => error!(
+                                "An error occured while handling data server request: {:?}",
+                                e
+                            ),
+                        }
+                    });
                 }
-            });
+            };
         }
-        Ok(())
     }
 
     /// Send regular messages to the namenode (heartbeats, block reports, etc.)
