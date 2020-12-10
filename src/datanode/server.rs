@@ -1,10 +1,8 @@
 use crate::config::Config;
 use crate::datanode::datanode_storage::DataNodeStorage;
-use crate::error::{Result, UdfsError};
-
-use crate::proto::node_protocol_client::NodeProtocolClient;
-
 use crate::datanode::handler::DataTransferHandler;
+use crate::error::{Result, UdfsError};
+use crate::proto::node_protocol_client::NodeProtocolClient;
 use crate::proto::HeartbeatMessage;
 
 use std::future::Future;
@@ -18,6 +16,11 @@ use tokio::time;
 
 use tracing::{error, info};
 
+/// DataNode is responsible for storing the actual data.
+/// It regularly sends heartbeats to the [`crate::namenode::NameNode`] to signal that it is still alive.
+/// It is also responsible for accepting read and write requests from clients.
+///
+/// A DataNode needs to be started by calling the [`run`](`DataNode::run`) method.
 pub struct DataNode<'a> {
     addr: &'a str,
     namenode_rpc_address: &'a str,
@@ -26,6 +29,7 @@ pub struct DataNode<'a> {
 }
 
 impl<'a> DataNode<'a> {
+    /// Creates a new DataNode.
     pub fn new(addr: &'a str, config: &'a Config) -> Result<Self> {
         let storage = Arc::new(DataNodeStorage::new(&config)?);
         Ok(Self {
@@ -36,6 +40,9 @@ impl<'a> DataNode<'a> {
         })
     }
 
+    /// Binds a TCP Stream on which it accepts client requests and runs
+    /// a background thread to regularly catch-up with the `NameNode`.
+    /// Runs until it resolves a value from `shutdown_signal`.
     pub async fn run(&mut self, shutdown_signal: impl Future) -> Result<()> {
         let (tx, rx1) = broadcast::channel(1);
         let rx2 = tx.subscribe();
