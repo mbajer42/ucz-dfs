@@ -1,6 +1,6 @@
 use crate::block::Block;
 use crate::datanode::datanode_storage::DataNodeStorage;
-use crate::error::{Result, UdfsError};
+use crate::error::Result;
 use crate::proto;
 use crate::proto::{
     operation::OpCode, Operation, Packet, ReadBlockOperation, WriteBlockOperation,
@@ -60,7 +60,7 @@ impl DataTransferHandler {
 
     async fn handle_write(&mut self) -> Result<()> {
         let WriteBlockOperation { block, targets } = parse_message(&mut self.socket).await?;
-        let block = block.expect("Block is required").into();
+        let block = block.into();
         let block_file = self.storage.start_block_creation(&block).await?;
 
         match self.write_block(block_file, &block, &targets[1..]).await {
@@ -68,7 +68,7 @@ impl DataTransferHandler {
                 self.storage.finish_block_creation(&block).await?;
                 let response = WriteBlockResponse {
                     success: true,
-                    block: Some(response_block),
+                    block: response_block,
                     locations,
                 };
                 let mut buffer = vec![];
@@ -86,14 +86,7 @@ impl DataTransferHandler {
 
     async fn handle_read(&mut self) -> Result<()> {
         let ReadBlockOperation { block } = parse_message(&mut self.socket).await?;
-        let block = match block {
-            Some(block) => Block {
-                id: block.id,
-                len: block.len,
-            },
-            None => return Err(UdfsError::IOError("No block provided".to_owned())),
-        };
-
+        let block = block.into();
         let mut buffer = vec![];
         let mut blockfile = BufReader::new(self.storage.get_blockfile(&block)?);
         let mut remaining_to_send = blockfile.get_ref().metadata().await?.len();
@@ -139,10 +132,10 @@ impl DataTransferHandler {
             buffer.clear();
 
             WriteBlockOperation {
-                block: Some(proto::Block {
+                block: proto::Block {
                     id: block.id,
                     len: block.len,
-                }),
+                },
                 targets: targets.into(),
             }
             .encode_length_delimited(&mut buffer)?;

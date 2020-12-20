@@ -1,4 +1,4 @@
-syntax = "proto3";
+syntax = "proto2";
 
 import "common.proto";
 
@@ -10,25 +10,25 @@ message Operation {
         READ_BLOCK = 1;
     }
 
-    OpCode op = 1;
+    required OpCode op = 1;
 }
 
 message ReadBlockOperation {
-    Block block = 1;
+    required Block block = 1;
 }
 
 message WriteBlockOperation {
-    Block block = 1;
+    required Block block = 1;
     repeated string targets = 2;
 }
 
 message WriteBlockResponse {
-    bool success = 1;
-    Block block = 2;
+    required bool success = 1;
+    required Block block = 2;
     repeated string locations = 3;
 }
 
 message Packet {
-    uint64 size = 1;
-    bool last = 2;
+    required uint64 size = 1;
+    required bool last = 2;
 }

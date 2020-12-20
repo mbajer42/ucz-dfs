@@ -159,10 +159,10 @@ impl ClientProtocol for ClientProtocolService {
                 let blocks = blocks_with_locations
                     .into_iter()
                     .map(|(block, locations)| {
-                        let block = Some(proto::Block {
+                        let block = proto::Block {
                             id: block.id,
                             len: block.len,
-                        });
+                        };
                         proto::BlockWithLocations { block, locations }
                     })
                     .collect();
@@ -194,10 +194,7 @@ impl ClientProtocol for ClientProtocolService {
                         used: info.used(),
                     })
                     .collect();
-                Ok(Response::new(proto::BlockWithTargets {
-                    block: Some(block),
-                    targets,
-                }))
+                Ok(Response::new(proto::BlockWithTargets { block, targets }))
             }
             Ok(None) => Err(Status::failed_precondition(
                 "Cannot create file, not enough avaialable datanodes with free space",
@@ -248,10 +245,7 @@ impl ClientProtocol for ClientProtocolService {
                         used: info.used(),
                     })
                     .collect();
-                Ok(Response::new(proto::BlockWithTargets {
-                    block: Some(block),
-                    targets,
-                }))
+                Ok(Response::new(proto::BlockWithTargets { block, targets }))
             }
             Ok(None) => Err(Status::failed_precondition(
                 "Cannot create another block, not enough avaialable datanodes with free space",
@@ -269,12 +263,7 @@ impl ClientProtocol for ClientProtocolService {
             locations,
             path,
         } = request.into_inner();
-        let block = if let Some(block) = block {
-            block.into()
-        } else {
-            return Err(Status::invalid_argument("Expected block to be non-empty"));
-        };
-
+        let block = block.into();
         for location in locations {
             match self.bookkeeper.block_received(&block, &location, &path) {
                 Ok(()) => (),
@@ -290,12 +279,7 @@ impl ClientProtocol for ClientProtocolService {
         request: Request<proto::AbortBlockWriteRequest>,
     ) -> std::result::Result<Response<proto::EmptyMessage>, Status> {
         let proto::AbortBlockWriteRequest { block, path } = request.into_inner();
-        let block = if let Some(block) = block {
-            block.into()
-        } else {
-            return Err(Status::invalid_argument("Expected block to be non-empty"));
-        };
-
+        let block = block.into();
         match self.bookkeeper.abort_block(&path, &block) {
             Ok(()) => Ok(Response::new(proto::EmptyMessage {})),
             Err(err) => Err(Status::invalid_argument(err.to_string())),

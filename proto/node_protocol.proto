@@ -1,4 +1,4 @@
-syntax = "proto3";
+syntax = "proto2";
 
 import "common.proto";
 
@@ -10,7 +10,7 @@ service NodeProtocol {
 
 
 message HeartbeatMessage {
-    string address = 1;
-    uint64 available = 2;
-    uint64 used = 3;
+    required string address = 1;
+    required uint64 available = 2;
+    required uint64 used = 3;
 }

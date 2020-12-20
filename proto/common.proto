@@ -1,17 +1,17 @@
-syntax = "proto3";
+syntax = "proto2";
 
 package udfs.proto;
 
 message EmptyMessage {}
 
 message DataNodeInfo {
-    string address = 1;
-    uint64 available = 2;
-    uint64 used = 3;
+    required string address = 1;
+    required uint64 available = 2;
+    required uint64 used = 3;
 }
 
 message Block {
-    uint64 id = 1;
-    uint64 len = 2;
+    required uint64 id = 1;
+    required uint64 len = 2;
 }
 

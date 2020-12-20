@@ -47,11 +47,7 @@ impl DfsReader {
             .into_iter()
             .map(|block_with_locations| {
                 let proto::BlockWithLocations { block, locations } = block_with_locations;
-                let block = block
-                    .ok_or_else(|| {
-                        UdfsError::RPCError("Expected to receive a block from namenode".to_owned())
-                    })?
-                    .into();
+                let block = block.into();
                 Ok((block, locations))
             })
             .collect::<Result<Vec<(Block, Vec<String>)>>>()?;
@@ -74,10 +70,10 @@ impl DfsReader {
         buffer.clear();
 
         let read_op = proto::ReadBlockOperation {
-            block: Some(proto::Block {
+            block: proto::Block {
                 id: current_block.id,
                 len: current_block.len,
-            }),
+            },
         };
         read_op.encode_length_delimited(&mut buffer)?;
         current_reader.write_all(&buffer).await?;
@@ -136,10 +132,10 @@ impl DfsReader {
         self.buffer.clear();
 
         let read_op = proto::ReadBlockOperation {
-            block: Some(proto::Block {
+            block: proto::Block {
                 id: current_block.id,
                 len: current_block.len,
-            }),
+            },
         };
         read_op.encode_length_delimited(&mut self.buffer)?;
 

@@ -3,8 +3,8 @@ use udfs::config;
 use udfs::config::Config;
 use udfs::datanode::DataNode;
 use udfs::error::Result;
-use udfs::utils::proto_utils;
 use udfs::proto;
+use udfs::utils::proto_utils;
 
 use prost::Message;
 
@@ -50,7 +50,7 @@ async fn datanodes_handle_write_requests() -> Result<()> {
     buffer.clear();
 
     let write_operation = proto::WriteBlockOperation {
-        block: Some(proto::Block { id: 42, len: 0 }),
+        block: proto::Block { id: 42, len: 0 },
         targets: datanode_addresses
             .iter()
             .map(|addr| String::from(*addr))
@@ -75,7 +75,7 @@ async fn datanodes_handle_write_requests() -> Result<()> {
     } = proto_utils::parse_message(&mut client).await?;
 
     assert!(success, "Write should end successfully");
-    let proto::Block { id, len } = block.expect("Block is not none");
+    let proto::Block { id, len } = block;
     assert_eq!(id, 42, "Id should not change");
     assert_eq!(
         len,
@@ -92,7 +92,7 @@ async fn datanodes_handle_write_requests() -> Result<()> {
         op: proto::operation::OpCode::ReadBlock as i32,
     };
     let read_operation = proto::ReadBlockOperation {
-        block: Some(proto::Block { id, len }),
+        block: proto::Block { id, len },
     };
     for datanode_addr in datanode_addresses {
         let mut client = TcpStream::connect(datanode_addr).await?;
