@@ -1,4 +1,4 @@
-syntax = "proto3";
+syntax = "proto2";
 
 import "common.proto";
 
@@ -22,7 +22,7 @@ message DataNodeInfoResponse {
 }
 
 message OpenFileRequest {
-    string path = 1;
+    required string path = 1;
 }
 
 message OpenFileResponse {
@@ -30,16 +30,16 @@ message OpenFileResponse {
 }
 
 message BlockWithLocations {
-    Block block = 1;
+    required Block block = 1;
     repeated string locations = 2;
 }
 
 message MkdirRequest {
-    string path = 1;
+    required string path = 1;
 }
 
 message LsRequest {
-    string path = 1;
+    required string path = 1;
 }
 
 message LsResponse {
@@ -47,26 +47,26 @@ message LsResponse {
 }
 
 message CreateFileRequest {
-    string path = 1;
+    required string path = 1;
 }
 
 message BlockWithTargets {
-    Block block = 1;
+    required Block block = 1;
     repeated DataNodeInfo targets = 2;
 }
 
 message AddBlockRequest {
-    string path = 1;
+    required string path = 1;
 }
 
 message FinishBlockWriteRequest {
-    Block block = 1;
+    required Block block = 1;
     repeated string locations = 2;
-    string path = 3;
+    required string path = 3;
 }
 
 message AbortBlockWriteRequest {
-    Block block = 1;
-    string path = 2;
+    required Block block = 1;
+    required string path = 2;
 }
 

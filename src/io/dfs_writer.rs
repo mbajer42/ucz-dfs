@@ -1,11 +1,10 @@
 use crate::config::Config;
 use crate::error::{Result, UdfsError};
-use crate::utils::proto_utils;
 use crate::proto;
 use crate::proto::client_protocol_client::ClientProtocolClient;
+use crate::utils::proto_utils;
 
 use prost::Message;
-
 
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufStream, SeekFrom};
@@ -126,7 +125,7 @@ impl DfsWriter {
                 .into_inner()
         };
         self.file_started = true;
-        let block = block.ok_or_else(|| UdfsError::FSError("Block expected".to_owned()))?;
+        let block = block.into();
 
         Ok((block, targets))
     }
@@ -144,7 +143,7 @@ impl DfsWriter {
         buffer.clear();
 
         let write_op = proto::WriteBlockOperation {
-            block: Some(block),
+            block,
             targets: targets.iter().map(|info| info.address.clone()).collect(),
         };
         write_op.encode_length_delimited(&mut buffer)?;
