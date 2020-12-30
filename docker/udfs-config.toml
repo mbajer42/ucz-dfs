@@ -7,7 +7,7 @@ name_dir = "/usr/src/ucz-dfs/namenode"
 namenode_rpc_address = "http://namenode:42000"
 rpc_port = 42001
 data_dir = "/tmp"
-disk_statistics_interval = 3000
+disk_statistics_interval = 3
 
 [filesystem]
 type = "udfs"

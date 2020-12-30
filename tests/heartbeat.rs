@@ -38,7 +38,7 @@ async fn namenode_keeps_track_of_datanodes() {
     spawn_datanode(datanode2_shutdown_rx, "127.0.0.1:42003", 42003);
 
     // Allow datanodes to get registered
-    delay_for(Duration::from_millis(1000)).await;
+    delay_for(Duration::from_millis(2000)).await;
 
     let nodes_report = dfs.nodes_report().await.unwrap();
     let expected_addresses = vec!["127.0.0.1:42001", "127.0.0.1:42002", "127.0.0.1:42003"];

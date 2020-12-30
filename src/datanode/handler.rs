@@ -43,7 +43,7 @@ impl DataTransferHandler {
     pub(crate) async fn handle(&mut self) -> Result<()> {
         match self.socket.get_ref().peer_addr() {
             Ok(peer_addr) => {
-                debug!("Received request form {:?}", peer_addr);
+                debug!("Received request from {:?}", peer_addr);
             }
             Err(e) => debug!("Could not retrieve peer address, reason: {:?}", e),
         };
@@ -105,6 +105,7 @@ impl DataTransferHandler {
             buffer.resize_with(packet_size as usize, u8::default);
             blockfile.read_exact(&mut buffer).await?;
             self.socket.write_all(&buffer).await?;
+            buffer.clear();
         }
 
         self.socket.flush().await?;
