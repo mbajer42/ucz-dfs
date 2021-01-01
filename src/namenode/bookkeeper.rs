@@ -1,11 +1,13 @@
 use crate::block::Block;
 use crate::config::Config;
 use crate::error::{Result, UdfsError};
+use crate::namenode::block_map::BlockMap;
+use crate::namenode::creates_in_progress::CreatesInProgress;
 use crate::namenode::datanode_info::DataNodeInfo;
 use crate::namenode::dfs_state::DfsState;
 use crate::namenode::editlog::{EditLog, EditOperation};
 
-use std::collections::{hash_map::Entry, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::sync::{atomic, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
@@ -30,14 +32,12 @@ pub(crate) struct BookKeeper {
     block_replication: u64,
     block_size: u64,
 
-    // TODO: The following 3 maps have the problem that block length might be never get updated.
-
     // keep track which files are about to created
-    creates_in_progress: Mutex<HashMap<String, HashSet<Block>>>,
+    creates_in_progress: RwLock<CreatesInProgress>,
     // map datanode address to its blocks
     datanode_to_blocks: Mutex<HashMap<String, HashSet<Block>>>,
     // map block to datanode addresses
-    block_to_datanodes: Mutex<HashMap<Block, HashSet<String>>>,
+    block_to_datanodes: RwLock<BlockMap>,
     // TODO: Last generated block id does not survive. Make it persistent.
     block_id_generator: atomic::AtomicU64,
 }
@@ -48,11 +48,11 @@ impl BookKeeper {
         let heartbeats = Mutex::new(HashMap::new());
         let alive_datanodes = Mutex::new(HashMap::new());
         let dfs_state = RwLock::new(DfsState::new());
+        let creates_in_progress = RwLock::new(CreatesInProgress::new());
         let heartbeat_decomission = Duration::from_millis(config.namenode.heartbeat_decomission);
         let heartbeat_check_interval = Duration::from_millis(config.namenode.heartbeat_check);
-        let creates_in_progress = Mutex::new(HashMap::new());
         let datanode_to_blocks = Mutex::new(HashMap::new());
-        let block_to_datanodes = Mutex::new(HashMap::new());
+        let block_to_datanodes = RwLock::new(BlockMap::new());
 
         Ok(Self {
             edit_logger,
@@ -132,16 +132,15 @@ impl BookKeeper {
 
     pub(crate) fn open_file(&self, path: &str) -> Result<Vec<(Block, Vec<String>)>> {
         let dfs_state = self.dfs_state.read().unwrap();
-        let block_to_datanodes = self.block_to_datanodes.lock().unwrap();
+        let block_to_datanodes = self.block_to_datanodes.read().unwrap();
         let file_blocks = dfs_state.open_file(path)?;
 
         Ok(file_blocks
             .iter()
             .map(|block| {
                 let datanodes = block_to_datanodes
-                    .get(block)
+                    .get_nodes(block.id)
                     .expect("If file with block exists, then this block should be replicated")
-                    .iter()
                     .map(|s| s.to_owned())
                     .collect();
                 (*block, datanodes)
@@ -154,15 +153,9 @@ impl BookKeeper {
         path: &str,
     ) -> Result<Option<(Block, Vec<DataNodeInfo>)>> {
         let dfs_state = self.dfs_state.read().unwrap();
-        let mut creates_in_progress = self.creates_in_progress.lock().unwrap();
+        let mut creates_in_progress = self.creates_in_progress.write().unwrap();
         dfs_state.check_file_creation(path)?;
-
-        if creates_in_progress.contains_key(path) {
-            return Err(UdfsError::FSError(format!(
-                "'{}': File creation already in progress",
-                path
-            )));
-        }
+        creates_in_progress.add_file(path.to_owned())?;
 
         let mut target_nodes = HashSet::new();
         let mut available_nodes = self
@@ -183,7 +176,7 @@ impl BookKeeper {
                 let block = Block::new(block_id, 0);
                 let mut blocks = HashSet::new();
                 blocks.insert(block);
-                creates_in_progress.insert(path.to_owned(), blocks);
+                creates_in_progress.add_block(path, block_id)?;
                 return Ok(Some((block, target_nodes.into_iter().collect())));
             }
         }
@@ -191,38 +184,37 @@ impl BookKeeper {
         Ok(None)
     }
 
-    pub(crate) fn abort_file_create(&self, path: &str) {
-        let mut creates_in_progress = self.creates_in_progress.lock().unwrap();
-        creates_in_progress.remove(path);
+    pub(crate) fn abort_file_create(&self, path: &str) -> Result<()> {
+        let mut creates_in_progress = self.creates_in_progress.write().unwrap();
+        creates_in_progress.remove_file(path)?;
+        Ok(())
     }
 
     pub(crate) fn finish_file_create(&self, path: &str) -> Result<()> {
-        let mut creates_in_progress = self.creates_in_progress.lock().unwrap();
-        let blocks = creates_in_progress.get_mut(path).ok_or_else(|| {
-            UdfsError::FSError(format!("'{}': File creation not in progress", path))
-        })?;
-
-        let block_to_datanodes = self.block_to_datanodes.lock().unwrap();
-        let mut blocks = blocks.iter().copied().collect::<Vec<_>>();
-        // Blocks with lower id were generated earlier
-        blocks.sort_by_key(|block| block.id);
-
-        let is_block_replicated =
-            |datanodes: &HashSet<String>| (datanodes.len() as u64) >= self.block_replication;
-
-        for block in blocks.iter() {
-            if !block_to_datanodes
-                .get(block)
-                .map_or(false, is_block_replicated)
-            {
-                return Err(UdfsError::FSError(
-                    "Not all blocks have been written yet".to_owned(),
-                ));
+        let creates_in_progress = self.creates_in_progress.read().unwrap();
+        let block_ids = creates_in_progress.block_ids(path)?;
+        for block_id in block_ids {
+            let replication_count = creates_in_progress.replication_count(*block_id);
+            if replication_count < self.block_replication {
+                return Err(UdfsError::WaitingForReplication(format!(
+                    "Block {} has been replicated only {} times, but {} replications are required",
+                    block_id, replication_count, self.block_replication,
+                )));
             }
         }
 
+        let block_to_datanodes = self.block_to_datanodes.read().unwrap();
+        let blocks = block_ids
+            .iter()
+            .map(|id| {
+                block_to_datanodes
+                    .stored_block(*id)
+                    .expect("Block should exist")
+            })
+            .collect::<Vec<_>>();
+
         let mut dfs_state = self.dfs_state.write().unwrap();
-        dfs_state.create_file(path, &blocks)?;
+        dfs_state.create_file(path, blocks.as_slice())?;
 
         Ok(())
     }
@@ -231,23 +223,15 @@ impl BookKeeper {
         &self,
         path: &str,
     ) -> Result<Option<(Block, Vec<DataNodeInfo>)>> {
-        let mut creates_in_progress = self.creates_in_progress.lock().unwrap();
-        let block_to_datanodes = self.block_to_datanodes.lock().unwrap();
-        let blocks = creates_in_progress.get_mut(path).ok_or_else(|| {
-            UdfsError::FSError(format!("'{}': File creation has not started yet", path))
-        })?;
-
-        let is_block_replicated =
-            |datanodes: &HashSet<String>| (datanodes.len() as u64) >= self.block_replication;
-
-        for block in blocks.iter() {
-            if !block_to_datanodes
-                .get(block)
-                .map_or(false, is_block_replicated)
-            {
-                return Err(UdfsError::FSError(
-                    "Not all previous blocks have been written yet".to_owned(),
-                ));
+        let mut creates_in_progress = self.creates_in_progress.write().unwrap();
+        let block_ids = creates_in_progress.block_ids(path)?;
+        for block_id in block_ids {
+            let replication_count = creates_in_progress.replication_count(*block_id);
+            if replication_count < self.block_replication {
+                return Err(UdfsError::WaitingForReplication(format!(
+                    "Block {} has been replicated only {} times, but {} replications are required",
+                    block_id, replication_count, self.block_replication,
+                )));
             }
         }
 
@@ -268,7 +252,7 @@ impl BookKeeper {
             if target_nodes.len() as u64 >= self.block_replication {
                 let block_id = self.next_block_id();
                 let block = Block::new(block_id, 0);
-                blocks.insert(block);
+                creates_in_progress.add_block(path, block_id)?;
                 return Ok(Some((block, target_nodes.into_iter().collect())));
             }
         }
@@ -276,24 +260,15 @@ impl BookKeeper {
         Ok(None)
     }
 
-    pub(crate) fn block_received(
-        &self,
-        block: &Block,
-        datanode_address: &str,
-        path: &str,
-    ) -> Result<()> {
+    pub(crate) fn block_received(&self, block: &Block, datanode_address: &str) -> Result<()> {
         let mut datanode_to_blocks = self.datanode_to_blocks.lock().unwrap();
-        let mut block_to_datanodes = self.block_to_datanodes.lock().unwrap();
-        let mut creates_in_progress = self.creates_in_progress.lock().unwrap();
+        let mut block_to_datanodes = self.block_to_datanodes.write().unwrap();
 
-        // update blocks in creates_in_progress to new block length
-        let blocks = creates_in_progress.get_mut(path).ok_or_else(|| {
-            UdfsError::FSError(format!(
-                "Block does not seem to be part of the file {}",
-                path
-            ))
-        })?;
-        blocks.replace(*block);
+        let newly_reported = block_to_datanodes.add_node(*block, datanode_address.to_owned());
+        if newly_reported {
+            let mut creates_in_progress = self.creates_in_progress.write().unwrap();
+            creates_in_progress.increment_replication(block.id);
+        }
 
         let blocks = datanode_to_blocks
             .get_mut(datanode_address)
@@ -306,29 +281,13 @@ impl BookKeeper {
             })?;
         blocks.insert(*block);
 
-        let datanodes = match block_to_datanodes.entry(*block) {
-            Entry::Vacant(entry) => entry.insert(HashSet::new()),
-            Entry::Occupied(entry) => entry.into_mut(),
-        };
-        datanodes.insert(datanode_address.to_owned());
-
         Ok(())
     }
 
     pub(crate) fn abort_block(&self, path: &str, block: &Block) -> Result<()> {
-        let mut creates_in_progress = self.creates_in_progress.lock().unwrap();
-        let blocks = creates_in_progress.get_mut(path).ok_or_else(|| {
-            UdfsError::FSError(format!("'{}': File creation is not in progress", path))
-        })?;
-
-        if blocks.remove(block) {
-            Ok(())
-        } else {
-            Err(UdfsError::FSError(format!(
-                "Block with id '{}' was not in progress for file '{}'",
-                block.id, path
-            )))
-        }
+        let mut creates_in_progress = self.creates_in_progress.write().unwrap();
+        creates_in_progress.remove_block(path, block.id)?;
+        Ok(())
     }
 
     async fn log_operation(&self, op: EditOperation) {

@@ -15,28 +15,30 @@ use prost::Message;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufStream, BufWriter};
 use tokio::net::TcpStream;
+use tokio::sync::mpsc::Sender;
 
-use tracing::debug;
+use tracing::{debug, warn};
 
+/// DataTransferHandler is reponsible for processing incoming/outgoing data.
 pub(crate) struct DataTransferHandler {
-    addr: String,
     socket: BufStream<TcpStream>,
     storage: Arc<DataNodeStorage>,
     packet_size: u64,
+    block_sender: Sender<proto::Block>,
 }
 
 impl DataTransferHandler {
     pub(crate) fn new(
-        addr: String,
         socket: TcpStream,
         storage: Arc<DataNodeStorage>,
         packet_size: u64,
+        block_sender: Sender<proto::Block>,
     ) -> Self {
         Self {
-            addr,
             socket: BufStream::new(socket),
             storage,
             packet_size,
+            block_sender,
         }
     }
 
@@ -64,13 +66,9 @@ impl DataTransferHandler {
         let block_file = self.storage.start_block_creation(&block).await?;
 
         match self.write_block(block_file, &block, &targets[1..]).await {
-            Ok((response_block, locations)) => {
+            Ok(()) => {
                 self.storage.finish_block_creation(&block).await?;
-                let response = WriteBlockResponse {
-                    success: true,
-                    block: response_block,
-                    locations,
-                };
+                let response = WriteBlockResponse { success: true };
                 let mut buffer = vec![];
                 response.encode_length_delimited(&mut buffer)?;
                 self.socket.write_all(&buffer).await?;
@@ -117,7 +115,7 @@ impl DataTransferHandler {
         block_file: File,
         block: &Block,
         targets: &[String],
-    ) -> Result<(proto::Block, Vec<String>)> {
+    ) -> Result<()> {
         let mut block_file = BufWriter::new(block_file);
 
         let mut buffer = vec![];
@@ -175,18 +173,11 @@ impl DataTransferHandler {
 
         block_file.flush().await?;
 
-        let mut successful_locations = vec![self.addr.to_owned()];
-
         if let Some(ref mut stream) = next_node {
-            let WriteBlockResponse {
-                success,
-                block: _,
-                locations,
-            } = parse_message(stream).await?;
+            let WriteBlockResponse { success } = parse_message(stream).await?;
             if !success {
                 debug!("Unexpected failure from {}", targets[0]);
             }
-            successful_locations.extend_from_slice(&locations);
         }
 
         let block = proto::Block {
@@ -194,6 +185,13 @@ impl DataTransferHandler {
             len: total_block_length,
         };
 
-        Ok((block, successful_locations))
+        if self.block_sender.send(block.clone()).await.is_err() {
+            warn!(
+                "Receiver dropped. Namenode will not be informed of new written block {:?}",
+                block
+            );
+        }
+
+        Ok(())
     }
 }

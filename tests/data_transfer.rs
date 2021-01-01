@@ -68,31 +68,17 @@ async fn datanodes_handle_write_requests() -> Result<()> {
     }
     client.flush().await?;
 
-    let proto::WriteBlockResponse {
-        success,
-        block,
-        locations,
-    } = proto_utils::parse_message(&mut client).await?;
-
+    let proto::WriteBlockResponse { success } = proto_utils::parse_message(&mut client).await?;
     assert!(success, "Write should end successfully");
-    let proto::Block { id, len } = block;
-    assert_eq!(id, 42, "Id should not change");
-    assert_eq!(
-        len,
-        PAYLOAD_TO_SAFE.as_bytes().len() as u64,
-        "All bytes should be written"
-    );
-    assert_eq!(
-        locations.len(),
-        3,
-        "Block should be replicated on all 3 datanodes"
-    );
 
     let op = proto::Operation {
         op: proto::operation::OpCode::ReadBlock as i32,
     };
     let read_operation = proto::ReadBlockOperation {
-        block: proto::Block { id, len },
+        block: proto::Block {
+            id: 42,
+            len: PAYLOAD_TO_SAFE.bytes().len() as u64,
+        },
     };
     for datanode_addr in datanode_addresses {
         let mut client = TcpStream::connect(datanode_addr).await?;
@@ -115,7 +101,10 @@ async fn datanodes_handle_write_requests() -> Result<()> {
         assert_eq!(response, PAYLOAD_TO_SAFE);
     }
 
-    let block = Block { id, len };
+    let block = Block {
+        id: 42,
+        len: PAYLOAD_TO_SAFE.bytes().len() as u64,
+    };
     for (temp_datadir, shutdown_tx) in datanodes {
         assert_block_written(&temp_datadir, &block);
         shutdown_tx.send(()).unwrap();

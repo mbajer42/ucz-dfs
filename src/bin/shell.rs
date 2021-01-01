@@ -57,6 +57,7 @@ async fn main() -> Result<()> {
                     "\tUsed storage (kB): {} ({:.2}%)",
                     datanode.used, used_percentage
                 );
+                println!();
             }
         }
         ("ls", Some(path)) => {

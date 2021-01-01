@@ -24,8 +24,6 @@ message WriteBlockOperation {
 
 message WriteBlockResponse {
     required bool success = 1;
-    required Block block = 2;
-    repeated string locations = 3;
 }
 
 message Packet {

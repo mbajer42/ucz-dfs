@@ -6,6 +6,7 @@ package udfs.proto;
 
 service NodeProtocol {
     rpc heartbeat(HeartbeatMessage) returns (EmptyMessage);
+    rpc block_received(BlockReceivedRequest) returns (EmptyMessage);
 }
 
 
@@ -13,4 +14,9 @@ message HeartbeatMessage {
     required string address = 1;
     required uint64 available = 2;
     required uint64 used = 3;
+}
+
+message BlockReceivedRequest {
+    required string address = 1;
+    required Block block = 2;
 }

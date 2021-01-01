@@ -13,7 +13,6 @@ service ClientProtocol {
     rpc finish_file_create(CreateFileRequest) returns (EmptyMessage);
     rpc abort_file_create(CreateFileRequest) returns (EmptyMessage);
     rpc add_block(AddBlockRequest) returns (BlockWithTargets);
-    rpc finish_block_write(FinishBlockWriteRequest) returns (EmptyMessage);
     rpc abort_block_write(AbortBlockWriteRequest) returns (EmptyMessage);
 }
 
@@ -57,12 +56,6 @@ message BlockWithTargets {
 
 message AddBlockRequest {
     required string path = 1;
-}
-
-message FinishBlockWriteRequest {
-    required Block block = 1;
-    repeated string locations = 2;
-    required string path = 3;
 }
 
 message AbortBlockWriteRequest {
