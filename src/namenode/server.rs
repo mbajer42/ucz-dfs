@@ -11,7 +11,7 @@ use std::sync::Arc;
 use tonic::transport::Server;
 use tonic::{Request, Response, Status};
 
-use tracing::{debug, info};
+use tracing::{debug, info, trace};
 
 pub struct NameNode<'a> {
     config: &'a Config,
@@ -81,7 +81,7 @@ impl NodeProtocol for NodeProtocolService {
     ) -> std::result::Result<Response<proto::EmptyMessage>, Status> {
         let message = request.into_inner();
 
-        debug!("Received heartbeat: {:?}", message);
+        trace!("Received heartbeat: {:?}", message);
 
         let proto::HeartbeatMessage {
             address,
@@ -90,6 +90,23 @@ impl NodeProtocol for NodeProtocolService {
         } = message;
         self.bookkeeper.receive_heartbeat(address, available, used);
         Ok(Response::new(proto::EmptyMessage {}))
+    }
+
+    async fn block_received(
+        &self,
+        request: Request<proto::BlockReceivedRequest>,
+    ) -> std::result::Result<Response<proto::EmptyMessage>, Status> {
+        let message = request.into_inner();
+        let proto::BlockReceivedRequest { address, block } = message;
+        let block = block.into();
+
+        match self.bookkeeper.block_received(&block, &address) {
+            Ok(()) => {
+                debug!("Datanode {} persisted block {:?}", address, block);
+                Ok(Response::new(proto::EmptyMessage {}))
+            }
+            Err(err) => return Err(Status::invalid_argument(err.to_string())),
+        }
     }
 }
 
@@ -210,6 +227,7 @@ impl ClientProtocol for ClientProtocolService {
         let proto::CreateFileRequest { path } = request.into_inner();
         match self.bookkeeper.finish_file_create(&path) {
             Ok(()) => Ok(Response::new(proto::EmptyMessage {})),
+            Err(UdfsError::WaitingForReplication(err)) => Err(Status::unavailable(err)),
             Err(err) => Err(Status::invalid_argument(err.to_string())),
         }
     }
@@ -219,8 +237,11 @@ impl ClientProtocol for ClientProtocolService {
         request: Request<proto::CreateFileRequest>,
     ) -> std::result::Result<Response<proto::EmptyMessage>, Status> {
         let proto::CreateFileRequest { path } = request.into_inner();
-        self.bookkeeper.abort_file_create(&path);
-        Ok(Response::new(proto::EmptyMessage {}))
+
+        match self.bookkeeper.abort_file_create(&path) {
+            Ok(()) => Ok(Response::new(proto::EmptyMessage {})),
+            Err(err) => Err(Status::invalid_argument(err.to_string())),
+        }
     }
 
     async fn add_block(
@@ -250,28 +271,9 @@ impl ClientProtocol for ClientProtocolService {
             Ok(None) => Err(Status::failed_precondition(
                 "Cannot create another block, not enough avaialable datanodes with free space",
             )),
+            Err(UdfsError::WaitingForReplication(err)) => Err(Status::unavailable(err)),
             Err(err) => Err(Status::invalid_argument(err.to_string())),
         }
-    }
-
-    async fn finish_block_write(
-        &self,
-        request: Request<proto::FinishBlockWriteRequest>,
-    ) -> std::result::Result<Response<proto::EmptyMessage>, Status> {
-        let proto::FinishBlockWriteRequest {
-            block,
-            locations,
-            path,
-        } = request.into_inner();
-        let block = block.into();
-        for location in locations {
-            match self.bookkeeper.block_received(&block, &location, &path) {
-                Ok(()) => (),
-                Err(err) => return Err(Status::invalid_argument(err.to_string())),
-            };
-        }
-
-        Ok(Response::new(proto::EmptyMessage {}))
     }
 
     async fn abort_block_write(

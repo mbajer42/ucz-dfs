@@ -8,6 +8,7 @@ pub enum UdfsError {
     ConfigError(String),
     FSError(String),
     ArgMissingError(String),
+    WaitingForReplication(String),
     ProtoEncodeError(prost::EncodeError),
     ProtoDecodeError(prost::DecodeError),
 }

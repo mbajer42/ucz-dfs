@@ -9,6 +9,7 @@ use prost::Message;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufStream, SeekFrom};
 use tokio::net::TcpStream;
+use tokio::time;
 
 use tonic::transport::Channel;
 
@@ -99,23 +100,41 @@ impl DfsWriter {
             self.write_block().await?;
         }
 
-        self.namenode_client
-            .finish_file_create(proto::CreateFileRequest {
-                path: self.path.clone(),
-            })
-            .await?;
+        let max_retries = 10;
+        let mut sleep_time = time::Duration::from_millis(500);
+        for _ in 0..max_retries {
+            let response = self
+                .namenode_client
+                .finish_file_create(proto::CreateFileRequest {
+                    path: self.path.clone(),
+                })
+                .await;
+            match response {
+                Ok(_) => return Ok(()),
+                Err(status) => {
+                    // we set code to unavailable if not all blocks have been
+                    // replicated yet. Wait for some time, maybe the block will be
+                    // eventually replicated
+                    if status.code() == tonic::Code::Unavailable {
+                        time::delay_for(sleep_time).await;
+                        sleep_time *= 2;
+                        continue;
+                    } else {
+                        return Err(status.into());
+                    }
+                }
+            }
+        }
 
-        Ok(())
+        Err(UdfsError::FSError(format!(
+            "Failed to save file after {} retries.",
+            max_retries
+        )))
     }
 
     async fn next_block(&mut self) -> Result<(proto::Block, Vec<proto::DataNodeInfo>)> {
         let proto::BlockWithTargets { block, targets } = if self.file_started {
-            self.namenode_client
-                .add_block(proto::AddBlockRequest {
-                    path: self.path.clone(),
-                })
-                .await?
-                .into_inner()
+            self.following_block().await?
         } else {
             self.namenode_client
                 .start_file_create(proto::CreateFileRequest {
@@ -125,9 +144,42 @@ impl DfsWriter {
                 .into_inner()
         };
         self.file_started = true;
-        let block = block.into();
+        let block = block;
 
         Ok((block, targets))
+    }
+
+    async fn following_block(&mut self) -> Result<proto::BlockWithTargets> {
+        let max_retries = 10;
+        let mut sleep_time = time::Duration::from_millis(500);
+        for _ in 0..max_retries {
+            let response = self
+                .namenode_client
+                .add_block(proto::AddBlockRequest {
+                    path: self.path.clone(),
+                })
+                .await;
+
+            match response {
+                Ok(message) => return Ok(message.into_inner()),
+                Err(status) => {
+                    // we set code to unavailable if not all blocks have been
+                    // replicated yet. Wait for some time, maybe the block will be
+                    // eventually replicated
+                    if status.code() == tonic::Code::Unavailable {
+                        time::delay_for(sleep_time).await;
+                        sleep_time *= 2;
+                        continue;
+                    } else {
+                        return Err(status.into());
+                    }
+                }
+            }
+        }
+        Err(UdfsError::FSError(format!(
+            "Failed to add new block after {} retries.",
+            max_retries
+        )))
     }
 
     async fn write_block(&mut self) -> Result<()> {
@@ -172,27 +224,15 @@ impl DfsWriter {
         }
         datanode.flush().await?;
 
-        let proto::WriteBlockResponse {
-            success,
-            block,
-            locations,
-        } = proto_utils::parse_message(&mut datanode).await?;
+        let proto::WriteBlockResponse { success } =
+            proto_utils::parse_message(&mut datanode).await?;
 
-        if success {
-            self.namenode_client
-                .finish_block_write(proto::FinishBlockWriteRequest {
-                    block,
-                    locations,
-                    path: self.path.clone(),
-                })
-                .await?;
-        } else {
+        if !success {
             return Err(UdfsError::FSError(
                 "Replicating block was not successful".to_owned(),
             ));
         }
 
-        //self.backup_buffer.get_mut().set_len(0).await?;
         self.backup_buffer
             .get_mut()
             .seek(SeekFrom::Start(0u64))
