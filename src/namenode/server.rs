@@ -225,7 +225,7 @@ impl ClientProtocol for ClientProtocolService {
         request: Request<proto::CreateFileRequest>,
     ) -> std::result::Result<Response<proto::EmptyMessage>, Status> {
         let proto::CreateFileRequest { path } = request.into_inner();
-        match self.bookkeeper.finish_file_create(&path) {
+        match self.bookkeeper.finish_file_create(&path).await {
             Ok(()) => Ok(Response::new(proto::EmptyMessage {})),
             Err(UdfsError::WaitingForReplication(err)) => Err(Status::unavailable(err)),
             Err(err) => Err(Status::invalid_argument(err.to_string())),

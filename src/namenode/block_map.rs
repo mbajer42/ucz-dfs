@@ -20,6 +20,19 @@ impl BlockMap {
         }
     }
 
+    pub(crate) fn contains_block(&self, block_id: u64) -> bool {
+        self.id_to_info.contains_key(&block_id)
+    }
+
+    pub(crate) fn add_block(&mut self, block: Block) {
+        self.id_to_info
+            .entry(block.id)
+            .or_insert_with(|| BlockInfo {
+                block,
+                datanodes: HashSet::new(),
+            });
+    }
+
     pub(crate) fn stored_block(&self, block_id: u64) -> Result<Block> {
         if let Some(block_info) = self.id_to_info.get(&block_id) {
             Ok(block_info.block)

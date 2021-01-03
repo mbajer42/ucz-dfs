@@ -51,19 +51,6 @@ impl CreatesInProgress {
         Ok(())
     }
 
-    pub(crate) fn add_block(&mut self, filename: &str, block_id: u64) -> Result<()> {
-        let blocks = self.filename_to_blocks.get_mut(filename);
-        if let Some(blocks) = blocks {
-            blocks.push(block_id);
-            Ok(())
-        } else {
-            Err(UdfsError::FSError(format!(
-                "'{}': File creation has not started yet",
-                filename
-            )))
-        }
-    }
-
     pub(crate) fn remove_file(&mut self, filename: &str) -> Result<()> {
         let blocks = self.filename_to_blocks.remove(filename);
         if let Some(blocks) = blocks {
@@ -77,6 +64,24 @@ impl CreatesInProgress {
                 filename
             )))
         }
+    }
+
+    pub(crate) fn add_block(&mut self, filename: &str, block_id: u64) -> Result<()> {
+        let blocks = self.filename_to_blocks.get_mut(filename);
+        if let Some(blocks) = blocks {
+            blocks.push(block_id);
+            self.block_to_replication_count.insert(block_id, 0);
+            Ok(())
+        } else {
+            Err(UdfsError::FSError(format!(
+                "'{}': File creation has not started yet",
+                filename
+            )))
+        }
+    }
+
+    pub(crate) fn contains_block(&self, block_id: u64) -> bool {
+        self.block_to_replication_count.contains_key(&block_id)
     }
 
     pub(crate) fn remove_block(&mut self, filename: &str, block_id: u64) -> Result<()> {
