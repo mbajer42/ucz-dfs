@@ -2,7 +2,9 @@ use crate::proto;
 
 use std::hash::{Hash, Hasher};
 
-#[derive(Copy, Clone, Debug)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
 pub struct Block {
     pub id: u64,
     pub len: u64,

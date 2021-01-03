@@ -1,3 +1,4 @@
+use crate::block::Block;
 use crate::config::Config;
 use crate::error::Result;
 
@@ -16,6 +17,7 @@ use tracing::error;
 pub enum EditOperation {
     /// A created directory
     Mkdir(String),
+    AddFile(String, Vec<Block>),
 }
 
 /// EditLog is responsible to log all namenode modifications.

@@ -76,6 +76,9 @@ impl BookKeeper {
         for op in ops {
             match op {
                 EditOperation::Mkdir(path) => self.non_logging_mkdir(&path)?,
+                EditOperation::AddFile(filename, blocks) => {
+                    self.non_logging_finish_file(&filename, &blocks)?
+                }
             };
         }
         Ok(())
@@ -153,9 +156,11 @@ impl BookKeeper {
         path: &str,
     ) -> Result<Option<(Block, Vec<DataNodeInfo>)>> {
         let dfs_state = self.dfs_state.read().unwrap();
-        let mut creates_in_progress = self.creates_in_progress.write().unwrap();
         dfs_state.check_file_creation(path)?;
-        creates_in_progress.add_file(path.to_owned())?;
+        self.creates_in_progress
+            .write()
+            .unwrap()
+            .add_file(path.to_owned())?;
 
         let mut target_nodes = HashSet::new();
         let mut available_nodes = self
@@ -176,7 +181,10 @@ impl BookKeeper {
                 let block = Block::new(block_id, 0);
                 let mut blocks = HashSet::new();
                 blocks.insert(block);
-                creates_in_progress.add_block(path, block_id)?;
+                self.creates_in_progress
+                    .write()
+                    .unwrap()
+                    .add_block(path, block_id)?;
                 return Ok(Some((block, target_nodes.into_iter().collect())));
             }
         }
@@ -190,7 +198,16 @@ impl BookKeeper {
         Ok(())
     }
 
-    pub(crate) fn finish_file_create(&self, path: &str) -> Result<()> {
+    pub(crate) async fn finish_file_create(&self, path: &str) -> Result<()> {
+        let blocks = self.internal_finish_file_create(path)?;
+        self.non_logging_finish_file(path, blocks.as_slice())?;
+        self.log_operation(EditOperation::AddFile(path.to_owned(), blocks))
+            .await;
+
+        Ok(())
+    }
+
+    fn internal_finish_file_create(&self, path: &str) -> Result<Vec<Block>> {
         let creates_in_progress = self.creates_in_progress.read().unwrap();
         let block_ids = creates_in_progress.block_ids(path)?;
         for block_id in block_ids {
@@ -211,11 +228,17 @@ impl BookKeeper {
                     .stored_block(*id)
                     .expect("Block should exist")
             })
-            .collect::<Vec<_>>();
+            .collect();
+        Ok(blocks)
+    }
 
+    fn non_logging_finish_file(&self, path: &str, blocks: &[Block]) -> Result<()> {
         let mut dfs_state = self.dfs_state.write().unwrap();
-        dfs_state.create_file(path, blocks.as_slice())?;
-
+        dfs_state.create_file(path, blocks)?;
+        let mut block_map = self.block_to_datanodes.write().unwrap();
+        for block in blocks {
+            block_map.add_block(*block);
+        }
         Ok(())
     }
 
@@ -223,17 +246,7 @@ impl BookKeeper {
         &self,
         path: &str,
     ) -> Result<Option<(Block, Vec<DataNodeInfo>)>> {
-        let mut creates_in_progress = self.creates_in_progress.write().unwrap();
-        let block_ids = creates_in_progress.block_ids(path)?;
-        for block_id in block_ids {
-            let replication_count = creates_in_progress.replication_count(*block_id);
-            if replication_count < self.block_replication {
-                return Err(UdfsError::WaitingForReplication(format!(
-                    "Block {} has been replicated only {} times, but {} replications are required",
-                    block_id, replication_count, self.block_replication,
-                )));
-            }
-        }
+        self.check_all_blocks_replicated(path)?;
 
         let mut target_nodes = HashSet::new();
         let mut available_nodes = self
@@ -252,12 +265,34 @@ impl BookKeeper {
             if target_nodes.len() as u64 >= self.block_replication {
                 let block_id = self.next_block_id();
                 let block = Block::new(block_id, 0);
-                creates_in_progress.add_block(path, block_id)?;
+                self.creates_in_progress
+                    .write()
+                    .unwrap()
+                    .add_block(path, block_id)?;
                 return Ok(Some((block, target_nodes.into_iter().collect())));
             }
         }
 
         Ok(None)
+    }
+
+    fn check_all_blocks_replicated(&self, path: &str) -> Result<()> {
+        let creates_in_progress = self.creates_in_progress.read().unwrap();
+        let block_ids = creates_in_progress.block_ids(path)?;
+        for block_id in block_ids {
+            let replication_count = self
+                .creates_in_progress
+                .read()
+                .unwrap()
+                .replication_count(*block_id);
+            if replication_count < self.block_replication {
+                return Err(UdfsError::WaitingForReplication(format!(
+                    "Block {} has been replicated only {} times, but {} replications are required",
+                    block_id, replication_count, self.block_replication,
+                )));
+            }
+        }
+        Ok(())
     }
 
     pub(crate) fn block_received(&self, block: &Block, datanode_address: &str) -> Result<()> {
@@ -311,8 +346,20 @@ impl BookKeeper {
     }
 
     fn next_block_id(&self) -> u64 {
-        self.block_id_generator
-            .fetch_add(1, atomic::Ordering::Relaxed)
+        let block_to_datanodes = self.block_to_datanodes.read().unwrap();
+        let creates_in_progress = self.creates_in_progress.read().unwrap();
+        loop {
+            let block_id = self
+                .block_id_generator
+                .fetch_add(1, atomic::Ordering::Relaxed);
+            if block_to_datanodes.contains_block(block_id)
+                || creates_in_progress.contains_block(block_id)
+            {
+                continue;
+            } else {
+                return block_id;
+            }
+        }
     }
 }
 
