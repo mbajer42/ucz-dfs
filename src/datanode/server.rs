@@ -93,7 +93,7 @@ impl<'a> DataNode<'a> {
         block_tx: mpsc::Sender<proto::Block>,
         mut shutdown_signal: broadcast::Receiver<()>,
     ) -> Result<()> {
-        let mut listener = TcpListener::bind(self.addr).await?;
+        let listener = TcpListener::bind(self.addr).await?;
 
         loop {
             tokio::select! {

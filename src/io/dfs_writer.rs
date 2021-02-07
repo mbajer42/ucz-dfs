@@ -7,7 +7,7 @@ use crate::utils::proto_utils;
 use prost::Message;
 
 use tokio::fs::{File, OpenOptions};
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufStream, SeekFrom};
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufStream, SeekFrom};
 use tokio::net::TcpStream;
 use tokio::time;
 
@@ -116,7 +116,7 @@ impl DfsWriter {
                     // replicated yet. Wait for some time, maybe the block will be
                     // eventually replicated
                     if status.code() == tonic::Code::Unavailable {
-                        time::delay_for(sleep_time).await;
+                        time::sleep(sleep_time).await;
                         sleep_time *= 2;
                         continue;
                     } else {
@@ -167,7 +167,7 @@ impl DfsWriter {
                     // replicated yet. Wait for some time, maybe the block will be
                     // eventually replicated
                     if status.code() == tonic::Code::Unavailable {
-                        time::delay_for(sleep_time).await;
+                        time::sleep(sleep_time).await;
                         sleep_time *= 2;
                         continue;
                     } else {
