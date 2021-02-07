@@ -13,7 +13,7 @@ use tempdir::TempDir;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::oneshot;
-use tokio::time::{delay_for, Duration};
+use tokio::time::{sleep, Duration};
 
 static HEARTBEAT_INTERVAL: u64 = 500;
 
@@ -37,7 +37,7 @@ async fn datanodes_handle_write_requests() -> Result<()> {
         .collect::<Vec<_>>();
 
     // allow datanodes to spawn
-    delay_for(Duration::from_millis(100)).await;
+    sleep(Duration::from_millis(100)).await;
     let mut client = TcpStream::connect("127.0.0.1:42001").await?;
 
     let mut buffer = vec![];

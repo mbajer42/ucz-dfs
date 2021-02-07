@@ -8,7 +8,7 @@ use std::io::SeekFrom;
 use serde::{Deserialize, Serialize};
 
 use tokio::fs::File;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufStream};
+use tokio::io::{AsyncBufReadExt, AsyncSeekExt, AsyncWriteExt, BufStream};
 
 use tracing::error;
 

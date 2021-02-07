@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use tempdir::TempDir;
 
 use tokio::sync::oneshot;
-use tokio::time::{delay_for, Duration};
+use tokio::time::{sleep, Duration};
 
 static HEARTBEAT_CHECK_INTERVAL: u64 = 50;
 static HEARTBEAT_INTERVAL: u64 = 50;
@@ -33,7 +33,7 @@ async fn test_read_write() -> Result<()> {
     });
 
     // allow namenode to spawn
-    delay_for(Duration::from_millis(100)).await;
+    sleep(Duration::from_millis(100)).await;
     let datanode_addresses = vec!["127.0.0.1:42001", "127.0.0.1:42002", "127.0.0.1:42003"];
     let datanodes = datanode_addresses
         .iter()
@@ -49,7 +49,7 @@ async fn test_read_write() -> Result<()> {
         .collect::<Vec<_>>();
 
     // allow datanodes to spawn
-    delay_for(Duration::from_millis(100)).await;
+    sleep(Duration::from_millis(100)).await;
 
     let config = namenode_config("/tmp");
     let mut writer = DfsWriter::create("/noether.txt", "http://127.0.0.1:42000", &config).await?;

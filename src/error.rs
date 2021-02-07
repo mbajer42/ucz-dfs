@@ -9,8 +9,7 @@ pub enum UdfsError {
     FSError(String),
     ArgMissingError(String),
     WaitingForReplication(String),
-    ProtoEncodeError(prost::EncodeError),
-    ProtoDecodeError(prost::DecodeError),
+    ProtoError(String),
 }
 
 impl Display for UdfsError {
@@ -59,13 +58,13 @@ impl From<tonic::Status> for UdfsError {
 
 impl From<prost::EncodeError> for UdfsError {
     fn from(error: prost::EncodeError) -> Self {
-        UdfsError::ProtoEncodeError(error)
+        UdfsError::ProtoError(error.to_string())
     }
 }
 
 impl From<prost::DecodeError> for UdfsError {
     fn from(error: prost::DecodeError) -> Self {
-        UdfsError::ProtoDecodeError(error)
+        UdfsError::ProtoError(error.to_string())
     }
 }
 

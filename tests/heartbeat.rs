@@ -7,7 +7,7 @@ use udfs::namenode::NameNode;
 use std::path::PathBuf;
 
 use tokio::sync::oneshot;
-use tokio::time::{delay_for, Duration};
+use tokio::time::{sleep, Duration};
 
 static HEARTBEAT_CHECK_INTERVAL: u64 = 100;
 static HEARTBEAT_INTERVAL: u64 = 500;
@@ -38,7 +38,7 @@ async fn namenode_keeps_track_of_datanodes() {
     spawn_datanode(datanode2_shutdown_rx, "127.0.0.1:42003", 42003);
 
     // Allow datanodes to get registered
-    delay_for(Duration::from_millis(2000)).await;
+    sleep(Duration::from_millis(2000)).await;
 
     let nodes_report = dfs.nodes_report().await.unwrap();
     let expected_addresses = vec!["127.0.0.1:42001", "127.0.0.1:42002", "127.0.0.1:42003"];
@@ -46,7 +46,7 @@ async fn namenode_keeps_track_of_datanodes() {
 
     // Shutdown datanode2 and wait for heartbeat timeout
     datanode2_shutdown_tx.send(()).unwrap();
-    delay_for(Duration::from_millis(5000)).await;
+    sleep(Duration::from_millis(5000)).await;
 
     let nodes_report = dfs.nodes_report().await.unwrap();
     let expected_addresses = vec!["127.0.0.1:42001", "127.0.0.1:42003"];
@@ -55,7 +55,7 @@ async fn namenode_keeps_track_of_datanodes() {
     // Spawn new datanodes, wait until is registered
     let (datanode2_shutdown_tx, datanode2_shutdown_rx) = oneshot::channel::<()>();
     spawn_datanode(datanode2_shutdown_rx, "127.0.0.1:42002", 42002);
-    delay_for(Duration::from_millis(1000)).await;
+    sleep(Duration::from_millis(1000)).await;
 
     let nodes_report = dfs.nodes_report().await.unwrap();
     let expected_addresses = vec!["127.0.0.1:42001", "127.0.0.1:42002", "127.0.0.1:42003"];

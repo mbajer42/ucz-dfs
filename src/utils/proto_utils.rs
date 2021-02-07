@@ -1,6 +1,5 @@
 use crate::error::{Result, UdfsError};
 
-use prost::DecodeError;
 use prost::Message;
 
 use tokio::io::{AsyncRead, AsyncReadExt};
@@ -29,9 +28,7 @@ async fn get_message_size(reader: &mut (impl AsyncRead + Unpin)) -> Result<(u64,
         shift += 7;
     }
 
-    Err(UdfsError::ProtoDecodeError(DecodeError::new(
-        "invalid varint",
-    )))
+    Err(UdfsError::ProtoError("invalid varint".to_owned()))
 }
 
 #[cfg(test)]
@@ -43,7 +40,8 @@ mod test {
 
     use bytes::Bytes;
     use prost::Message;
-    use tokio::io::stream_reader;
+    use tokio::io::Result;
+    use tokio_util::io::StreamReader;
 
     #[tokio::test]
     async fn buffer_with_multiple_messages() {
@@ -64,8 +62,8 @@ mod test {
             .encode_length_delimited(&mut buffer)
             .expect("Should encode");
 
-        let stream = tokio::stream::iter(vec![Ok(Bytes::from(buffer))]);
-        let mut buffer = stream_reader(stream);
+        let stream = tokio_stream::iter(vec![Result::Ok(Bytes::from(buffer))]);
+        let mut buffer = StreamReader::new(stream);
 
         let message: Operation = parse_message(&mut buffer).await.expect("Should work fine");
         assert_eq!(message, first_op);
